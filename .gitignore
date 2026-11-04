@@ -1,10 +1,10 @@
-# dati e pesi: mai su git (vanno su Hugging Face Hub)
+# data and weights: never in git (they live on the Hugging Face Hub)
 data/
 *.faiss
 *.safetensors
 *.gguf
 *.bin
-# segreti
+# secrets
 .env
 *.key
 # python
