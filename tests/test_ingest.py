@@ -215,3 +215,17 @@ def test_summary_flags_incomplete_filings(tmp_path):
     assert [r["ok"] for r in rows] == [True, False]
     report = "\n".join(health_report(rows))
     assert "['BBB']" in report
+
+
+def test_clean_section_removes_page_furniture_but_keeps_sentences():
+    from src.ingest.parse import _clean_section
+
+    raw = (
+        "ITEM 1A. RISK FACTORS\nWe face risks. See Item 1A. Risk Factors on page 8 for details.\n"
+        "34\nPART II\nItem 7\nEconomic conditions matter.\n"
+    )
+    cleaned = _clean_section(raw)
+    assert cleaned == (
+        "We face risks. See Item 1A. Risk Factors on page 8 for details.\n"
+        "Economic conditions matter."
+    )

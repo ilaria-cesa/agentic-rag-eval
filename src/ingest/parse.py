@@ -57,6 +57,20 @@ def html_to_text(html: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", text).strip()
 
 
+_PAGE_NOISE_RE = re.compile(r"^[ \t]*(part[ \t]+[ivx]+|\d{1,3})[ \t]*$", re.IGNORECASE)
+
+
+def _clean_section(segment: str) -> str:
+    """Drop page furniture: running "PART II" / "Item 7" headers, bare page numbers and
+    leftover "Item X." heading lines. Without this, every page break injects noise into chunks."""
+    kept = [
+        line
+        for line in segment.splitlines()
+        if not _PAGE_NOISE_RE.match(line) and not _HEADING_RE.fullmatch(line.strip())
+    ]
+    return re.sub(r"\n{3,}", "\n\n", "\n".join(kept)).strip()
+
+
 def extract_sections(text: str) -> tuple[dict[str, str], list[str]]:
     """Return ({section_name: text}, warnings).
 
@@ -74,7 +88,7 @@ def extract_sections(text: str) -> tuple[dict[str, str], list[str]]:
             if next_key != key:
                 stop = next_start
                 break
-        segment = text[end:stop].strip()
+        segment = _clean_section(text[end:stop])
         name = WANTED_ITEMS[key]
         if len(segment) > len(best.get(name, "")):
             best[name] = segment
@@ -103,7 +117,7 @@ def _mdna_fallback(text: str) -> str:
     best = ""
     for title in _MDNA_TITLE_RE.finditer(text):
         end = _MDNA_END_RE.search(text, title.end())
-        segment = text[title.end() : end.start() if end else len(text)].strip()
+        segment = _clean_section(text[title.end() : end.start() if end else len(text)])
         if end and len(segment) > len(best):
             best = segment
     return best

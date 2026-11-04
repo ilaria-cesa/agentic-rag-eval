@@ -27,6 +27,5 @@ DEFAULT_TICKERS = [
     # Other sectors
     "PFE",
     "JNJ",
-    "XOM",
     "WMT",
 ]
