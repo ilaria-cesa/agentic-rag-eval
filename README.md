@@ -1,3 +1,3 @@
-# Agentic RAG con valutazione
+# Agentic RAG with Evaluation
 
-Work in progress. Nessun risultato ancora: le tabelle si riempiono solo con numeri misurati.
+Work in progress.
