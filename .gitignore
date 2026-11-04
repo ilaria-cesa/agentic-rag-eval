@@ -1,0 +1,16 @@
+# dati e pesi: mai su git (vanno su Hugging Face Hub)
+data/
+*.faiss
+*.safetensors
+*.gguf
+*.bin
+# segreti
+.env
+*.key
+# python
+__pycache__/
+*.pyc
+.venv/
+.ipynb_checkpoints/
+.ruff_cache/
+.pytest_cache/
