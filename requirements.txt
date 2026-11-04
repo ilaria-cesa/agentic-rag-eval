@@ -4,3 +4,6 @@
 -r requirements-base.txt
 sentence-transformers==5.7.0
 transformers==5.22.0
+# Added for the LLM notebook; versions are pinned after its first successful run.
+accelerate
+bitsandbytes
