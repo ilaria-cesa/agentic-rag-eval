@@ -1,0 +1,21 @@
+{
+  "n_texts": 9592,
+  "limit": 640,
+  "min": 85,
+  "median": 328,
+  "p95": 440,
+  "max": 633,
+  "n_over_limit": 0,
+  "share_over_limit": 0.0,
+  "chars_per_token": 4.38,
+  "n_over_512": 90,
+  "versions": {
+    "sentence-transformers": "5.7.0",
+    "transformers": "5.22.0",
+    "torch": "2.11.0+cu130",
+    "faiss-cpu": "1.15.1",
+    "numpy": "2.4.6",
+    "huggingface_hub": "1.33.0"
+  },
+  "model": "BAAI/bge-m3"
+}
