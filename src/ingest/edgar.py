@@ -16,6 +16,7 @@ import requests
 
 TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
 SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik:010d}.json"
+SUBMISSIONS_FILE_URL = "https://data.sec.gov/submissions/{name}"
 DOCUMENT_URL = "https://www.sec.gov/Archives/edgar/data/{cik}/{accession_nodash}/{document}"
 
 
@@ -100,20 +101,35 @@ class EdgarClient:
         }
 
     def list_10k_filings(self, cik: int, n: int = 2) -> list[Filing]:
-        """Latest `n` original 10-K filings (amendments such as 10-K/A are skipped)."""
-        recent = self.get_json(SUBMISSIONS_URL.format(cik=cik))["filings"]["recent"]
-        rows = zip(
-            recent["form"],
-            recent["accessionNumber"],
-            recent["filingDate"],
-            recent["reportDate"],
-            recent["primaryDocument"],
-            strict=True,
-        )
-        filings = [
-            Filing(cik, acc, form, filed, report, doc)
-            for form, acc, filed, report, doc in rows
-            if form == "10-K"
-        ]
+        """Latest `n` original 10-K filings (amendments such as 10-K/A are skipped).
+
+        The "recent" block of the submissions API only covers the latest filings. Companies that
+        file thousands of documents (large banks) can push last year's 10-K out of it, so older
+        archive files are read too until `n` filings are found.
+        """
+        data = self.get_json(SUBMISSIONS_URL.format(cik=cik))["filings"]
+        filings = _parse_10k_rows(cik, data["recent"])
+        archives = sorted(data.get("files", []), key=lambda e: e.get("filingTo", ""), reverse=True)
+        for archive in archives:
+            if len(filings) >= n:
+                break
+            older = self.get_json(SUBMISSIONS_FILE_URL.format(name=archive["name"]))
+            filings += _parse_10k_rows(cik, older)
         filings.sort(key=lambda f: f.filing_date, reverse=True)
         return filings[:n]
+
+
+def _parse_10k_rows(cik: int, block: dict) -> list[Filing]:
+    rows = zip(
+        block["form"],
+        block["accessionNumber"],
+        block["filingDate"],
+        block["reportDate"],
+        block["primaryDocument"],
+        strict=True,
+    )
+    return [
+        Filing(cik, acc, form, filed, report, doc)
+        for form, acc, filed, report, doc in rows
+        if form == "10-K"
+    ]

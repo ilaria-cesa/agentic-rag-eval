@@ -152,3 +152,44 @@ def test_mdna_fallback_when_item_7_is_a_cross_reference():
     assert len(sections["mdna"]) >= MIN_SECTION_CHARS
     assert "report on internal control" not in sections["mdna"]
     assert any("fallback" in w for w in warnings)
+
+
+def test_list_10k_filings_reads_archive_files_when_recent_is_not_enough():
+    recent = {
+        "form": ["424B2", "10-K"],
+        "accessionNumber": ["x1", "a2"],
+        "filingDate": ["2026-06-01", "2026-02-15"],
+        "reportDate": ["", "2025-12-31"],
+        "primaryDocument": ["x.htm", "k26.htm"],
+    }
+    older = {
+        "form": ["10-K", "10-Q"],
+        "accessionNumber": ["a1", "q1"],
+        "filingDate": ["2025-02-14", "2025-05-01"],
+        "reportDate": ["2024-12-31", ""],
+        "primaryDocument": ["k25.htm", "q.htm"],
+    }
+    top = {
+        "filings": {
+            "recent": recent,
+            "files": [{"name": "CIK1-submissions-001.json", "filingTo": "2025-12-31"}],
+        }
+    }
+    client, _ = make_client([FakeResponse(top), FakeResponse(older)])
+    filings = client.list_10k_filings(1, n=2)
+    assert [f.accession for f in filings] == ["a2", "a1"]
+    assert client.session.calls[1].endswith("/CIK1-submissions-001.json")
+
+
+def test_archive_files_are_not_fetched_when_recent_has_enough():
+    recent = {
+        "form": ["10-K", "10-K"],
+        "accessionNumber": ["a2", "a1"],
+        "filingDate": ["2026-02-15", "2025-02-14"],
+        "reportDate": ["2025-12-31", "2024-12-31"],
+        "primaryDocument": ["k26.htm", "k25.htm"],
+    }
+    top = {"filings": {"recent": recent, "files": [{"name": "old.json", "filingTo": "2020-01-01"}]}}
+    client, _ = make_client([FakeResponse(top)])
+    assert len(client.list_10k_filings(1, n=2)) == 2
+    assert len(client.session.calls) == 1
