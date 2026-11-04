@@ -5,13 +5,12 @@ Usage (from the repo root):
     python -m src.ingest.run --tickers JPM MSFT --years 1
 
 Output (git-ignored): data/raw/<TICKER>/<accession>.html, data/parsed/<TICKER>_<report_date>.json
-and data/summary.csv. The script is resumable: files already on disk are not downloaded again.
+(run `python -m src.ingest.summary` for the overview). The script is resumable: files already on disk are not downloaded again.
 """
 
 from __future__ import annotations
 
 import argparse
-import csv
 import json
 from pathlib import Path
 
@@ -44,7 +43,6 @@ def main(argv: list[str] | None = None) -> None:
     for missing in sorted({t.upper() for t in args.tickers} - set(companies)):
         print(f"WARNING: ticker not found on EDGAR: {missing}")
 
-    rows = []
     for ticker, (cik, name) in companies.items():
         for filing in client.list_10k_filings(cik, args.years):
             parsed_path = parsed_dir / f"{ticker}_{filing.report_date}.json"
@@ -71,17 +69,8 @@ def main(argv: list[str] | None = None) -> None:
                     "warnings": warnings,
                 }
                 parsed_path.write_text(json.dumps(record, ensure_ascii=False), encoding="utf-8")
-            row = {"ticker": ticker, "report_date": record["report_date"]}
-            row.update({n: len(record["sections"].get(n, "")) for n in WANTED_ITEMS.values()})
-            row["warnings"] = "; ".join(record["warnings"])
-            rows.append(row)
-            print(row)
-
-    if rows:
-        with open(args.out / "summary.csv", "w", newline="", encoding="utf-8") as f:
-            writer = csv.DictWriter(f, fieldnames=list(rows[0]))
-            writer.writeheader()
-            writer.writerows(rows)
+            lengths = {n: len(record["sections"].get(n, "")) for n in WANTED_ITEMS.values()}
+            print(ticker, record["report_date"], lengths, record["warnings"] or "")
 
 
 if __name__ == "__main__":

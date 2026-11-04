@@ -193,3 +193,25 @@ def test_archive_files_are_not_fetched_when_recent_has_enough():
     client, _ = make_client([FakeResponse(top)])
     assert len(client.list_10k_filings(1, n=2)) == 2
     assert len(client.session.calls) == 1
+
+
+def test_summary_flags_incomplete_filings(tmp_path):
+    import json
+
+    from src.ingest.summary import build_rows, health_report
+
+    parsed = tmp_path / "parsed"
+    parsed.mkdir()
+    full = {n: "x" * MIN_SECTION_CHARS for n in ("business", "risk_factors", "mdna")}
+    for ticker, sections in (("AAA", full), ("BBB", {"business": "short"})):
+        record = {
+            "ticker": ticker,
+            "report_date": "2025-12-31",
+            "sections": sections,
+            "warnings": [],
+        }
+        (parsed / f"{ticker}.json").write_text(json.dumps(record), encoding="utf-8")
+    rows = build_rows(parsed)
+    assert [r["ok"] for r in rows] == [True, False]
+    report = "\n".join(health_report(rows))
+    assert "['BBB']" in report
