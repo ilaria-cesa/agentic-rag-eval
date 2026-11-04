@@ -90,3 +90,22 @@ def test_browse_search_filters_and_ranks():
     hits = search(CHUNKS, "catastrophe losses", ticker="AAA")
     assert [h["chunk_id"] for h in hits] == ["AAA_2025-12-31_mdna_0000"]
     assert search(CHUNKS, "zzz nothing") == []
+
+
+def test_export_readable_shows_chunk_ids_in_section_order():
+    from src.eval.export_readable import render
+
+    chunks = [
+        {**CHUNKS[1], "company": "AAA INC", "position": 1, "section": "mdna"},
+        {**CHUNKS[0], "company": "AAA INC", "position": 0, "section": "mdna"},
+        {
+            **CHUNKS[0],
+            "company": "AAA INC",
+            "chunk_id": "AAA_2025-12-31_business_0000",
+            "position": 0,
+            "section": "business",
+        },
+    ]
+    text = render(chunks)
+    assert text.index("ITEM 1 BUSINESS") < text.index("ITEM 7 MD&A")
+    assert text.index("[AAA_2025-12-31_mdna_0000]") < text.index("[AAA_2025-12-31_mdna_0001]")
