@@ -1,3 +1,6 @@
 # Full environment for Colab / Kaggle notebooks (adds the embedding model library).
+# Pinned to the versions seen in the first successful Colab run (see results/embedding_report.json).
+# torch and numpy come preinstalled on Colab and are recorded in that report instead of pinned here.
 -r requirements-base.txt
-sentence-transformers
+sentence-transformers==5.7.0
+transformers==5.22.0
