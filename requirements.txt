@@ -1,6 +1,7 @@
-# Le versioni vengono pinnate (==) dopo il primo test su Colab T4.
-# Per ora solo lo stretto necessario per ingest e test locali.
+# Pinned after the first successful run on Colab (T4); versions below are the minimum for local ingestion and tests.
 requests
+beautifulsoup4
+lxml
 python-dotenv
 pytest
 ruff
