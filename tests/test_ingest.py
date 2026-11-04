@@ -138,3 +138,17 @@ def test_extract_sections_warns_when_a_section_is_missing():
     _, warnings = extract_sections("Item 1. Business\n" + BODY + "\nItem 2. Properties\nx")
     assert "missing section: risk_factors" in warnings
     assert "missing section: mdna" in warnings
+
+
+def test_mdna_fallback_when_item_7_is_a_cross_reference():
+    text = (
+        "Item 1. Business\n" + BODY + "\nItem 1A. Risk Factors\n" + BODY + "\n"
+        "Item 7. Management's Discussion and Analysis\nSee pages 46-160.\n"
+        "Item 8. Financial Statements\nSee pages 165-314.\n"
+        "Management's discussion and analysis\n"  # real section title in the financial part
+         + BODY + "\nManagement's report on internal control over financial reporting\nend\n"
+    )
+    sections, warnings = extract_sections(text)
+    assert len(sections["mdna"]) >= MIN_SECTION_CHARS
+    assert "report on internal control" not in sections["mdna"]
+    assert any("fallback" in w for w in warnings)

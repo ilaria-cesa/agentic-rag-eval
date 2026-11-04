@@ -9,8 +9,12 @@ Limitations (documented on purpose):
 from __future__ import annotations
 
 import re
+import warnings
 
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
+
+# 10-Ks are served as XHTML; parsing them with the HTML parser works fine.
+warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 
 # Items we keep. Item 1 = business, 1A = risk factors, 7 = MD&A.
 WANTED_ITEMS = {"1": "business", "1a": "risk_factors", "7": "mdna"}
@@ -19,6 +23,19 @@ MIN_SECTION_CHARS = 2000
 _BLOCK_TAGS = ["p", "div", "br", "li", "tr", "table", "h1", "h2", "h3", "h4", "h5", "h6"]
 _HEADING_RE = re.compile(
     r"^[ \t]*item[ \t]+(\d{1,2}[ab]?)[ \t]*[\.:\-–—]?[ \t]*(.{0,100})$",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+# Some filers (e.g. JPMorgan) put only a cross-reference under "Item 7" and place the real
+# MD&A in a separate financial section. The fallback looks for the MD&A title line and stops
+# at the first end marker that follows it.
+_MDNA_TITLE_RE = re.compile(
+    r"^management.s discussion and analysis[ \t]*$", re.IGNORECASE | re.MULTILINE
+)
+_MDNA_END_RE = re.compile(
+    r"^(management.s report on internal control|report of independent registered public accounting"
+    r" firm|consolidated financial statements[ \t]*$)",
     re.IGNORECASE | re.MULTILINE,
 )
 
@@ -63,6 +80,11 @@ def extract_sections(text: str) -> tuple[dict[str, str], list[str]]:
             best[name] = segment
 
     warnings = []
+    if len(best.get("mdna", "")) < MIN_SECTION_CHARS:
+        fallback = _mdna_fallback(text)
+        if len(fallback) >= MIN_SECTION_CHARS:
+            best["mdna"] = fallback
+            warnings.append("mdna extracted with fallback (Item 7 is a cross-reference)")
     for name in WANTED_ITEMS.values():
         length = len(best.get(name, ""))
         if length == 0:
@@ -70,3 +92,18 @@ def extract_sections(text: str) -> tuple[dict[str, str], list[str]]:
         elif length < MIN_SECTION_CHARS:
             warnings.append(f"short section: {name} ({length} chars)")
     return best, warnings
+
+
+def _mdna_fallback(text: str) -> str:
+    """Longest span from an MD&A title line to the next end marker ("" if none found).
+
+    The table of contents and page running headers also match the title, but they give
+    shorter spans, so taking the longest one selects the real section.
+    """
+    best = ""
+    for title in _MDNA_TITLE_RE.finditer(text):
+        end = _MDNA_END_RE.search(text, title.end())
+        segment = text[title.end() : end.start() if end else len(text)].strip()
+        if end and len(segment) > len(best):
+            best = segment
+    return best

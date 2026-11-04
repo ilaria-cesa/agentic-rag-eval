@@ -28,6 +28,11 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--years", type=int, default=2, help="number of latest 10-Ks per company")
     parser.add_argument("--out", type=Path, default=Path("data"))
     parser.add_argument("--max-rps", type=float, default=5.0)
+    parser.add_argument(
+        "--reparse",
+        action="store_true",
+        help="re-run section extraction on files already downloaded (no new downloads)",
+    )
     args = parser.parse_args(argv)
 
     load_dotenv()
@@ -43,7 +48,7 @@ def main(argv: list[str] | None = None) -> None:
     for ticker, (cik, name) in companies.items():
         for filing in client.list_10k_filings(cik, args.years):
             parsed_path = parsed_dir / f"{ticker}_{filing.report_date}.json"
-            if parsed_path.exists():
+            if parsed_path.exists() and not args.reparse:
                 record = json.loads(parsed_path.read_text(encoding="utf-8"))
             else:
                 raw_path = raw_dir / ticker / f"{filing.accession}.html"
