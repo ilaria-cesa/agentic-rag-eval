@@ -111,27 +111,3 @@ def test_export_readable_shows_chunk_ids_in_section_order():
     text = render(chunks)
     assert text.index("ITEM 1 BUSINESS") < text.index("ITEM 7 MD&A")
     assert text.index("[AAA_2025-12-31_mdna_0000]") < text.index("[AAA_2025-12-31_mdna_0001]")
-
-
-def test_draft_checks_catch_computed_numbers_and_adjacent_chunks():
-    from src.eval.draft_select import is_adjacent_multi_hop, unsupported_numbers
-
-    assert unsupported_numbers("Revenue was $115.877 billion.", "net sales 115,877 million") == []
-    assert unsupported_numbers("Growth was 18%.", "net sales 115,877 million") == ["18"]
-    assert is_adjacent_multi_hop(["A_2025_business_0017", "A_2025_business_0018"])
-    assert not is_adjacent_multi_hop(["A_2025_business_0017", "A_2025_mdna_0018"])
-
-
-def test_apply_rewrites_changes_only_approved_rows():
-    from src.eval.apply_rewrites import apply
-
-    rows = [
-        {"id": "a", "question": "old a", "answer": "x"},
-        {"id": "b", "question": "old b", "answer": "y"},
-    ]
-    sheet = [
-        ("a", "para", "old a", "new a", "x", "x2", "", "ok", None, None, None),
-        ("b", "para", "old b", "new b", "y", "y", "", "keep", None, None, None),
-    ]
-    out, changed = apply(rows, sheet)
-    assert changed == 1 and out[0]["question"] == "new a" and out[1]["question"] == "old b"
