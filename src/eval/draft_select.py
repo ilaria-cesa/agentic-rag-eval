@@ -186,10 +186,9 @@ def main(argv: list[str] | None = None) -> None:
     print(f"\nselected {len(chosen)} -> {args.out}")
     print("by type:", dict(Counter(q["type"] for q in chosen)))
     print("by company:", dict(sorted(Counter(q["company"] for q in chosen).items())))
-    from src.ingest.companies import DEFAULT_TICKERS
-
+    in_corpus = {cid.split("_")[0] for cid in chunks}
     covered = {q["company"] for q in questions}
-    print("companies with no drafted question:", sorted(set(DEFAULT_TICKERS) - covered))
+    print("corpus companies with no drafted question:", sorted(in_corpus - covered))
 
 
 if __name__ == "__main__":
