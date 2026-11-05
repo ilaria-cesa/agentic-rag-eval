@@ -156,6 +156,12 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--draft", type=Path, default=Path("data/possible_question.json"))
     parser.add_argument("--chunks", type=Path, default=Path("data/chunks_1600.jsonl"))
+    parser.add_argument(
+        "--extra",
+        type=Path,
+        default=None,
+        help="optional second draft file, all its questions are added to the review",
+    )
     parser.add_argument("--out", type=Path, default=Path("data/golden_review.xlsx"))
     parser.add_argument(
         "--force",
@@ -178,7 +184,15 @@ def main(argv: list[str] | None = None) -> None:
     ).most_common():
         print(f"  {count:3d}  {reason}")
 
+    extra = json.loads(args.extra.read_text(encoding="utf-8"))["questions"] if args.extra else []
+    for q in extra:
+        flagged[q["id"]] = problems(q, chunks)
+    print(
+        "extra questions flagged:",
+        {k: v for k, v in flagged.items() if v and k in {x["id"] for x in extra}},
+    )
     chosen = select(questions, chunks, {x for x in args.force.split(",") if x})
+    chosen += extra
     for q in chosen:
         if q["type"] == "unanswerable":
             q["evidence"] = []
