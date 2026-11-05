@@ -4,7 +4,7 @@ One JSON object per line:
   id                str, unique, e.g. "q001"
   question          str
   language          "en" | "it"
-  type              "fact" | "numeric" | "comparison" | "multi_hop" | "unanswerable"
+  type              "fact" | "numeric" | "comparison" | "multi_hop" | "unanswerable" | "false_premise"
   tickers           list[str], the companies the question is about
   report_dates      list[str], filing periods, e.g. ["2025-12-31"]
   expected          "answer" | "refuse"
@@ -16,7 +16,9 @@ Rules that keep the evaluation honest:
   * "unanswerable" questions must be about topics the documents really do not cover, and must
     use expected == "refuse" with no evidence;
   * every other question needs a written answer and at least one evidence chunk that exists;
-  * comparison and multi_hop questions need evidence from at least two chunks;
+  * multi_hop questions need evidence from at least two chunks; a comparison should have two,
+    but one chunk is accepted (with a warning) when a single table holds both periods;
+  * false_premise questions state something untrue and expect the answer to correct it;
   * name the filing year in the question: the 2024 and 2025 filings repeat many passages, so a
     question without a year can have several valid answers.
 
@@ -31,9 +33,9 @@ import re
 from collections import Counter
 from pathlib import Path
 
-TYPES = {"fact", "numeric", "comparison", "multi_hop", "unanswerable"}
+TYPES = {"fact", "numeric", "comparison", "multi_hop", "unanswerable", "false_premise"}
 LANGUAGES = {"en", "it"}
-_YEAR_RE = re.compile(r"\b(19|20)\d\d\b")
+_YEAR_RE = re.compile(r"(?<!\d)(19|20)\d\d(?!\d)")
 
 
 def load_jsonl(path: Path) -> list[dict]:
@@ -92,8 +94,11 @@ def validate(rows: list[dict], chunks: list[dict]) -> tuple[list[str], list[str]
                 err("missing written answer")
             if not evidence:
                 err("missing evidence_chunk_ids")
-            if row.get("type") in {"comparison", "multi_hop"} and len(set(evidence)) < 2:
-                err(f"type '{row.get('type')}' needs evidence from at least two chunks")
+            if len(set(evidence)) < 2:
+                if row.get("type") == "multi_hop":
+                    err("type 'multi_hop' needs evidence from at least two chunks")
+                elif row.get("type") == "comparison":
+                    warnings.append(f"{qid}: comparison backed by a single chunk")
         for chunk_id in evidence:
             chunk = chunk_by_id.get(chunk_id)
             if chunk is None:

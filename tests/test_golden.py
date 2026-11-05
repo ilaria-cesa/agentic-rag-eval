@@ -76,8 +76,10 @@ def test_refusal_rules():
 
 
 def test_comparison_needs_two_evidence_chunks_and_ids_must_be_unique():
-    errors, _ = validate([good(id="x", type="comparison"), good(id="x")], CHUNKS)
-    assert any("at least two" in e for e in errors)
+    errors, warnings = validate([good(id="x", type="comparison"), good(id="x")], CHUNKS)
+    assert any("single chunk" in w for w in warnings)
+    errors_mh, _ = validate([good(id="y", type="multi_hop")], CHUNKS)
+    assert any("at least two" in e for e in errors_mh)
     assert any("duplicate id" in e for e in errors)
 
 
