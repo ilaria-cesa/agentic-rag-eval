@@ -12,8 +12,8 @@ SYSTEM_PROMPT = (
     "passages provided by the user.\n"
     "Rules:\n"
     "1. Use only information that appears in the passages. Do not use outside knowledge.\n"
-    "2. After every claim, cite the passage it comes from with its id in square brackets, "
-    "for example [AAA_2025-12-31_mdna_0001].\n"
+    "2. After every claim, cite the passage it comes from by copying its id exactly as it is "
+    "written in square brackets at the start of that passage. Never invent or alter an id.\n"
     f"3. If the passages do not contain the answer, reply with exactly {NOT_FOUND} and nothing else.\n"
     "4. Answer in the language of the question. Be concise."
 )
