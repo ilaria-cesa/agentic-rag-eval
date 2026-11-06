@@ -15,11 +15,19 @@ def test_retrieval_metrics_recall_hit_all_and_mrr():
     assert retrieval_metrics(["a"], ["x", "y"])["mrr"] == 0
 
 
-def test_numbers_match_ignores_commas_and_short_numbers():
-    assert key_numbers("$1,927 branches in 5 states, 22%") == {"1927", "22"}
-    assert numbers_match("About 8.7 points", "It widened by 8.7 percentage points") is True
+def test_numbers_match_handles_units_percentages_and_years():
+    assert key_numbers("$1,927 branches in 5 states, 22% in 2025") == [
+        (1927.0, "plain"),
+        (22.0, "percent"),
+    ]
+    assert numbers_match("$38.219 billion", "fell from $38,219 million") is True
+    assert numbers_match("Approximately $1.609 trillion.", "$1,609.1 billion") is True
+    assert numbers_match("$5.943 billion", "about $5.9 billion") is True
     assert numbers_match("$168.6 billion", "about $150 billion") is False
+    assert numbers_match("22% of deposits", "21% of deposits") is False
+    assert numbers_match("It fell in FY2025.", "It fell in FY2024.") is None
     assert numbers_match("Florida", "Florida") is None
+    assert numbers_match("In 2025 it rose", "In 2024 it rose") is None
 
 
 def test_score_row_refusal_and_citations():

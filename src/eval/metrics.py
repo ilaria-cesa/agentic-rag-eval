@@ -32,18 +32,54 @@ def retrieval_metrics(evidence: list[str], retrieved: list[str], ks: tuple[int, 
     return out
 
 
-def key_numbers(text: str) -> set[str]:
-    """Numbers with at least two digits, without commas or trailing dots (years included)."""
-    cleaned = (n.replace(",", "").rstrip(".") for n in _NUMBER.findall(text))
-    return {n for n in cleaned if len(n.replace(".", "")) >= 2}
+_AMOUNT = re.compile(
+    r"(\d[\d,]*\.?\d*)\s*(trillion|billion|million|thousand|%|percent)?", re.IGNORECASE
+)
+_SCALE = {"trillion": 1e12, "billion": 1e9, "million": 1e6, "thousand": 1e3}
 
 
-def numbers_match(gold_answer: str, answer: str) -> bool | None:
-    """True when every key number of the gold answer is in the answer; None if it has none."""
+def _is_year(raw: str, value: float) -> bool:
+    return "," not in raw and "." not in raw and 1900 <= value <= 2100
+
+
+def key_numbers(text: str) -> list[tuple[float, str]]:
+    """(value, kind) pairs. Amounts with a scale word are converted to units ($38,219 million
+    equals 38.219 billion); percentages keep their own kind; years and one-digit numbers are
+    skipped because they would match by accident."""
+    found = []
+    for raw, unit in _AMOUNT.findall(text):
+        raw = raw.rstrip(".")  # a trailing dot is sentence punctuation, not a decimal point
+        try:
+            value = float(raw.replace(",", ""))
+        except ValueError:
+            continue
+        unit = unit.lower()
+        if unit in _SCALE:
+            found.append((value * _SCALE[unit], "amount"))
+        elif unit in {"%", "percent"}:
+            found.append((value, "percent"))
+        elif value >= 10 and not _is_year(raw, value):
+            found.append((value, "plain"))
+    return found
+
+
+def _close(a: float, b: float, tolerance: float) -> bool:
+    return abs(a - b) <= tolerance * max(abs(a), abs(b))
+
+
+def numbers_match(gold_answer: str, answer: str, tolerance: float = 0.01) -> bool | None:
+    """True when every key number of the gold answer appears in the answer (within 1% for
+    scaled amounts, exact otherwise); None if the gold answer has no key number. Rounded or
+    re-scaled figures count as a match; a figure that is merely close in kind does not."""
     wanted = key_numbers(gold_answer)
     if not wanted:
         return None
-    return wanted <= key_numbers(answer)
+    given = key_numbers(answer)
+    for value, kind in wanted:
+        tol = tolerance if kind == "amount" else 1e-9
+        if not any(k == kind and _close(value, v, tol) for v, k in given):
+            return False
+    return True
 
 
 def score_row(question: dict, parsed: dict, retrieved: list[str]) -> dict:
