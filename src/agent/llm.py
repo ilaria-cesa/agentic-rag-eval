@@ -34,7 +34,7 @@ def load_llm(name: str):
         return tokenizer, model, "AutoModelForImageTextToText"
 
 
-def generate(tokenizer, model, messages: list[dict]) -> dict:
+def generate(tokenizer, model, messages: list[dict], max_new_tokens: int = MAX_NEW_TOKENS) -> dict:
     """Greedy decoding with thinking switched off. Returns text, token counts and seconds."""
     import torch
 
@@ -44,7 +44,7 @@ def generate(tokenizer, model, messages: list[dict]) -> dict:
     inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
     start = time.time()
     with torch.no_grad():
-        output = model.generate(**inputs, max_new_tokens=MAX_NEW_TOKENS, do_sample=False)
+        output = model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=False)
     new_tokens = output[0][inputs["input_ids"].shape[-1] :]
     return {
         "text": tokenizer.decode(new_tokens, skip_special_tokens=True),

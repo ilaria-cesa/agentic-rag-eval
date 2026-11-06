@@ -1,0 +1,147 @@
+"""LangGraph agent: plan -> search -> (check -> search again) -> answer.
+
+Compared with the single-shot baseline the agent can (1) understand who and which years the
+question is about even when the company is not named, (2) run one search per company and
+year, so a comparison sees both years, and (3) look once more for a missing fact.
+It is deliberately small: at most `max_rounds` search rounds and three LLM calls.
+"""
+
+from __future__ import annotations
+
+import operator
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Annotated, TypedDict
+
+from src.agent.parsing import parse_answer
+from src.agent.plan import (
+    Search,
+    check_messages,
+    parse_check,
+    parse_plan,
+    plan_messages,
+)
+from src.agent.prompts import build_messages
+
+LLM = Callable[[list[dict], int], str]  # (messages, max_new_tokens) -> text
+SearchFn = Callable[[str, str | None, int | None, int], list[dict]]  # query, ticker, year, k
+
+
+@dataclass(frozen=True)
+class AgentConfig:
+    max_rounds: int = 2  # search rounds: 1 = plan only, 2 = plus one follow-up
+    chunks_per_round: int = 6  # total chunks added in a round, shared by its searches
+    max_context_chunks: int = 9
+    plan_tokens: int = 200
+    check_tokens: int = 120
+    answer_tokens: int = 400
+
+
+class State(TypedDict, total=False):
+    question: str
+    pending: list[Search]
+    evidence: list[dict]
+    rounds: int
+    trace: Annotated[list[str], operator.add]
+    raw_answer: str
+
+
+def build_agent(
+    llm: LLM,
+    search: SearchFn,
+    filings: dict[str, list[str]],
+    names: dict[str, str],
+    config: AgentConfig | None = None,
+    default_scope: Callable[[str], Search | None] | None = None,
+):
+    """Return a compiled graph; `invoke({"question": ...})` returns the final state."""
+    from langgraph.graph import END, START, StateGraph
+
+    from src.agent.plan import company_table
+
+    config = config or AgentConfig()
+
+    known = set(filings)
+    table = company_table(filings, names)
+
+    def plan(state: State) -> State:
+        text = llm(plan_messages(state["question"], table), config.plan_tokens)
+        searches = parse_plan(text, known)
+        note = f"plan: {len(searches)} search(es)" if searches else "plan: fallback single search"
+        if not searches:
+            fallback = default_scope(state["question"]) if default_scope else None
+            searches = [fallback or Search(state["question"])]
+        return {"pending": searches, "evidence": [], "rounds": 0, "trace": [note]}
+
+    def run_search(state: State) -> State:
+        searches = state["pending"]
+        per = max(2, config.chunks_per_round // len(searches))
+        if len(searches) == 1:
+            per = config.chunks_per_round
+        seen = {c["chunk_id"] for c in state["evidence"]}
+        evidence = list(state["evidence"])
+        lines = []
+        for item in searches:
+            lines.append(f"search: {item.query!r} ticker={item.ticker} year={item.year}")
+            for chunk in search(item.query, item.ticker, item.year, per):
+                if chunk["chunk_id"] not in seen:
+                    seen.add(chunk["chunk_id"])
+                    evidence.append(chunk)
+        return {"evidence": evidence, "rounds": state["rounds"] + 1, "trace": lines, "pending": []}
+
+    def check(state: State) -> State:
+        snippets = [
+            f"[{c['chunk_id']}] {c['text'][:350].replace(chr(10), ' ')}" for c in state["evidence"]
+        ]
+        text = llm(check_messages(state["question"], snippets), config.check_tokens)
+        follow_up = parse_check(text, known)
+        if follow_up:
+            return {"pending": [follow_up], "trace": ["check: not enough, one more search"]}
+        return {"pending": [], "trace": ["check: enough"]}
+
+    def answer(state: State) -> State:
+        context = state["evidence"][: config.max_context_chunks]
+        raw = llm(build_messages(state["question"], context), config.answer_tokens)
+        return {"raw_answer": raw, "evidence": context, "trace": ["answer"]}
+
+    def after_search(state: State) -> str:
+        return "check" if state["rounds"] < config.max_rounds else "answer"
+
+    def after_check(state: State) -> str:
+        return "search" if state["pending"] else "answer"
+
+    graph = StateGraph(State)
+    graph.add_node("plan", plan)
+    graph.add_node("search", run_search)
+    graph.add_node("check", check)
+    graph.add_node("answer", answer)
+    graph.add_edge(START, "plan")
+    graph.add_edge("plan", "search")
+    graph.add_conditional_edges("search", after_search, {"check": "check", "answer": "answer"})
+    graph.add_conditional_edges("check", after_check, {"search": "search", "answer": "answer"})
+    graph.add_edge("answer", END)
+    return graph.compile()
+
+
+def run_agent(agent, question: str) -> dict:
+    """Run the graph and parse the answer the same way as the baseline."""
+    state = agent.invoke({"question": question})
+    provided = [c["chunk_id"] for c in state["evidence"]]
+    parsed = parse_answer(state["raw_answer"], provided)
+    return parsed | {"evidence_ids": provided, "trace": state["trace"], "rounds": state["rounds"]}
+
+
+def regex_fallback(filings: dict[str, list[str]]) -> Callable[[str], Search]:
+    """Single search on the question itself, scoped by the rule-based company/year detector."""
+    from src.retrieval.scope import detect_scope
+
+    def fallback(question: str) -> Search:
+        scope = detect_scope(question, filings)
+        years = {int(d[:4]) for _, d in scope.report_dates}
+        return Search(
+            question,
+            scope.tickers[0] if len(scope.tickers) == 1 else None,
+            years.pop() if len(years) == 1 else None,
+        )
+
+    return fallback

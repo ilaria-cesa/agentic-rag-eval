@@ -100,3 +100,30 @@ def retrieve(
     else:
         ranked = [i for i, _ in lists[0]]
     return ranked[: config.top_k], scope
+
+
+def scoped_search(
+    corpus: Corpus,
+    query_vector: np.ndarray,
+    query: str,
+    ticker: str | None,
+    year: int | None,
+    k: int,
+    reranker: Scorer,
+    pool: int = 30,
+) -> list[dict]:
+    """Search with an explicit scope chosen by the caller (the agent): dense top-`pool`, then rerank.
+
+    Unknown tickers or years fall back to a wider scope instead of returning nothing.
+    """
+    keys = list(corpus.by_filing)
+    if ticker and any(t == ticker for t, _ in keys):
+        keys = [key for key in keys if key[0] == ticker]
+    if year and any(int(d[:4]) == year for _, d in keys):
+        keys = [key for key in keys if int(key[1][:4]) == year]
+    idx = np.concatenate([corpus.by_filing[key] for key in keys])
+    unit = query_vector / max(float(np.linalg.norm(query_vector)), 1e-12)
+    candidates = [i for i, _ in _top(corpus, unit, idx, pool)]
+    scores = reranker.score(query, [corpus.chunks[i]["embed_text"] for i in candidates])
+    order = sorted(zip(scores, candidates), key=lambda t: -t[0])
+    return [corpus.chunks[i] for _, i in order[:k]]

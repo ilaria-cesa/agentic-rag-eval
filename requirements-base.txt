@@ -7,3 +7,4 @@ python-dotenv
 numpy
 faiss-cpu==1.15.1
 huggingface_hub==1.33.0
+langgraph==1.2.20
