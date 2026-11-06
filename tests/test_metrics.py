@@ -58,3 +58,20 @@ def test_summarise_groups_by_type():
     ]
     s = summarise(rows)
     assert s["all"]["n"] == 3 and s["fact"]["behaviour_ok"] == 0.5
+
+
+def test_summarise_skips_text_and_list_columns():
+    rows = [
+        {
+            "id": "1",
+            "type": "fact",
+            "ok": True,
+            "answer": "text",
+            "cited_ids": ["a"],
+            "seconds": 2.0,
+        },
+        {"id": "2", "type": "fact", "ok": False, "answer": "more", "cited_ids": [], "seconds": 4.0},
+    ]
+    s = summarise(rows)["all"]
+    assert s["ok"] == 0.5 and s["seconds"] == 3.0
+    assert "answer" not in s and "cited_ids" not in s

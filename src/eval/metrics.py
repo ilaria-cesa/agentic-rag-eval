@@ -73,6 +73,16 @@ def _mean(values: list) -> float | None:
     return round(sum(values) / len(values), 3) if values else None
 
 
+def _numeric_columns(items: list[dict]) -> dict[str, list]:
+    """Columns whose values are all numbers, booleans or None (text and lists are skipped)."""
+    columns: dict[str, list] = {}
+    for key in sorted({key for item in items for key in item}):
+        values = [item.get(key) for item in items]
+        if all(v is None or isinstance(v, (bool, int, float)) for v in values):
+            columns[key] = values
+    return columns
+
+
 def summarise(rows: list[dict]) -> dict[str, dict]:
     """Mean of every numeric/bool column, overall and per question type."""
     groups: dict[str, list[dict]] = defaultdict(list)
@@ -81,8 +91,7 @@ def summarise(rows: list[dict]) -> dict[str, dict]:
         groups[row["type"]].append(row)
     summary = {}
     for name, items in groups.items():
-        columns = sorted({key for item in items for key in item} - {"id", "type"})
         summary[name] = {"n": len(items)} | {
-            col: _mean([item.get(col) for item in items]) for col in columns
+            col: _mean(values) for col, values in _numeric_columns(items).items()
         }
     return summary
