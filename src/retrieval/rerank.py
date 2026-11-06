@@ -22,4 +22,7 @@ class Reranker:
 
     def score(self, question: str, passages: list[str], batch_size: int = 16) -> list[float]:
         pairs = [(question, passage) for passage in passages]
-        return [float(s) for s in self.model.predict(pairs, batch_size=batch_size)]
+        return [
+            float(s)
+            for s in self.model.predict(pairs, batch_size=batch_size, show_progress_bar=False)
+        ]

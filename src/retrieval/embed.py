@@ -40,13 +40,13 @@ def length_report(lengths: list[int], limit: int) -> dict:
     }
 
 
-def embed_texts(model, texts: list[str], batch_size: int = 32) -> np.ndarray:
+def embed_texts(model, texts: list[str], batch_size: int = 32, progress: bool = True) -> np.ndarray:
     """Dense, L2-normalised embeddings as float32 (n_texts, dim)."""
     vectors = model.encode(
         texts,
         batch_size=batch_size,
         normalize_embeddings=True,
         convert_to_numpy=True,
-        show_progress_bar=True,
+        show_progress_bar=progress,
     )
     return np.asarray(vectors, dtype=np.float32)

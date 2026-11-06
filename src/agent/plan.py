@@ -36,10 +36,12 @@ def plan_messages(question: str, table: str) -> list[dict]:
         "Reply with ONLY a JSON object: "
         '{"searches": [{"query": "...", "ticker": "AAPL", "year": 2025}]}\n'
         "Rules: one search for every company AND fiscal year the question needs (a comparison "
-        "between two years needs two searches); write each query as the filing itself would "
-        "phrase it (financial terms, no question words); use null for ticker or year when the "
-        f"question does not say; at most {MAX_SEARCHES} searches. If the question describes a "
-        "company without naming it, use your own knowledge to pick the ticker from the list."
+        "between two years needs two searches). Write each query as a short descriptive phrase of "
+        "6 to 15 words that names the company, the fiscal year and exactly what is asked, for "
+        'example "Schwab 2025 net income and diluted earnings per share"; never a single term '
+        'like "Net Income". Use null for ticker or year when the question does not say; at most '
+        f"{MAX_SEARCHES} searches. If the question describes a company without naming it, use "
+        "your own knowledge to pick the ticker from the list."
     )
     return [{"role": "system", "content": system}, {"role": "user", "content": question}]
 
@@ -49,9 +51,10 @@ def check_messages(question: str, evidence_lines: list[str]) -> list[dict]:
         "You check whether retrieved passages from 10-K filings are enough to answer a question. "
         "Reply with ONLY a JSON object: "
         '{"enough": true} or {"enough": false, "search": {"query": "...", "ticker": "AAPL", '
-        '"year": 2025}}. Say enough=false only if a specific fact needed for the answer is '
-        "missing and a new search for it could plausibly find it; then describe that missing "
-        "fact in the search query."
+        '"year": 2025}}. Assume enough=true. Say enough=false only when a specific number or '
+        "fact that the question asks for is clearly absent from the passages and a new search "
+        "could plausibly find it; then write that search as a descriptive phrase of 6 to 15 words "
+        "naming the company, the year and the missing fact."
     )
     user = "Question: " + question + "\n\nRetrieved passages:\n" + "\n".join(evidence_lines)
     return [{"role": "system", "content": system}, {"role": "user", "content": user}]

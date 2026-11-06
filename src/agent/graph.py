@@ -3,7 +3,9 @@
 Compared with the single-shot baseline the agent can (1) understand who and which years the
 question is about even when the company is not named, (2) run one search per company and
 year, so a comparison sees both years, and (3) look once more for a missing fact.
-It is deliberately small: at most `max_rounds` search rounds and three LLM calls.
+It is deliberately small: at most `max_rounds` search rounds and three LLM calls. Every round
+also searches with the original question, and the final passages are chosen by reranking all
+candidates against that question (see context.py).
 """
 
 from __future__ import annotations
@@ -13,6 +15,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Annotated, TypedDict
 
+from src.agent.context import ScoreFn, select_context
 from src.agent.parsing import parse_answer
 from src.agent.plan import (
     Search,
@@ -30,8 +33,9 @@ SearchFn = Callable[[str, str | None, int | None, int], list[dict]]  # query, ti
 @dataclass(frozen=True)
 class AgentConfig:
     max_rounds: int = 2  # search rounds: 1 = plan only, 2 = plus one follow-up
-    chunks_per_round: int = 6  # total chunks added in a round, shared by its searches
-    max_context_chunks: int = 9
+    chunks_per_search: int = 4  # candidates kept from each search
+    single_search_chunks: int = 6  # candidates when a round has only one search
+    max_context_chunks: int = 7  # passages given to the answering model
     plan_tokens: int = 200
     check_tokens: int = 120
     answer_tokens: int = 400
@@ -53,6 +57,7 @@ def build_agent(
     names: dict[str, str],
     config: AgentConfig | None = None,
     default_scope: Callable[[str], Search | None] | None = None,
+    score_fn: ScoreFn | None = None,
 ):
     """Return a compiled graph; `invoke({"question": ...})` returns the final state."""
     from langgraph.graph import END, START, StateGraph
@@ -71,13 +76,12 @@ def build_agent(
         if not searches:
             fallback = default_scope(state["question"]) if default_scope else None
             searches = [fallback or Search(state["question"])]
+        searches = _with_question_search(state["question"], searches)
         return {"pending": searches, "evidence": [], "rounds": 0, "trace": [note]}
 
     def run_search(state: State) -> State:
         searches = state["pending"]
-        per = max(2, config.chunks_per_round // len(searches))
-        if len(searches) == 1:
-            per = config.chunks_per_round
+        per = config.single_search_chunks if len(searches) == 1 else config.chunks_per_search
         seen = {c["chunk_id"] for c in state["evidence"]}
         evidence = list(state["evidence"])
         lines = []
@@ -100,7 +104,9 @@ def build_agent(
         return {"pending": [], "trace": ["check: enough"]}
 
     def answer(state: State) -> State:
-        context = state["evidence"][: config.max_context_chunks]
+        context = select_context(
+            state["question"], state["evidence"], score_fn, config.max_context_chunks
+        )
         raw = llm(build_messages(state["question"], context), config.answer_tokens)
         return {"raw_answer": raw, "evidence": context, "trace": ["answer"]}
 
@@ -121,6 +127,22 @@ def build_agent(
     graph.add_conditional_edges("check", after_check, {"search": "search", "answer": "answer"})
     graph.add_edge("answer", END)
     return graph.compile()
+
+
+def _with_question_search(question: str, searches: list[Search]) -> list[Search]:
+    """Add a search on the original question, scoped like the plan (same single company/year).
+
+    Rewritten queries can drift; the user's own wording is the most faithful query, so it is
+    always run as well, and the final reranking decides which passages count.
+    """
+    tickers = {s.ticker for s in searches if s.ticker}
+    years = {s.year for s in searches if s.year}
+    base = Search(
+        question,
+        next(iter(tickers)) if len(tickers) == 1 else None,
+        next(iter(years)) if len(years) == 1 else None,
+    )
+    return searches if base in searches else [*searches, base]
 
 
 def run_agent(agent, question: str) -> dict:

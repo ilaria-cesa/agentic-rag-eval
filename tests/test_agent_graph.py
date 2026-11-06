@@ -63,7 +63,8 @@ def test_comparison_gets_one_search_per_year_and_answer_cites_real_chunks():
     )
     agent = build_agent(llm, make_search(log), FILINGS, NAMES)
     out = run_agent(agent, "How did net income of Alpha change from 2024 to 2025?")
-    assert [(t, y) for _, t, y, _ in log] == [("AAA", 2024), ("AAA", 2025)]
+    assert [(t, y) for _, t, y, _ in log] == [("AAA", 2024), ("AAA", 2025), ("AAA", None)]
+    assert log[-1][0] == "How did net income of Alpha change from 2024 to 2025?"
     assert out["cited_ids"] == ["AAA_2025-12-31_mdna_0000"] and not out["invalid_citations"]
     assert out["rounds"] == 1 and len(llm.calls) == 3
 
@@ -76,7 +77,8 @@ def test_follow_up_search_is_limited_by_max_rounds():
     )
     agent = build_agent(llm, make_search(log), FILINGS, NAMES, AgentConfig(max_rounds=2))
     out = run_agent(agent, "q")
-    assert out["rounds"] == 2 and [q for q, *_ in log] == ["revenue", "capex"]
+    assert out["rounds"] == 2 and [q for q, *_ in log][:2] == ["revenue", "q"]
+    assert [q for q, *_ in log][-1] == "capex"
     assert out["refused"] is True
     # with max_rounds=1 the check step is skipped entirely
     llm2 = Script('{"searches": [{"query": "revenue"}]}', "answer")
@@ -98,3 +100,21 @@ def test_regex_fallback_uses_company_and_year_from_the_question():
     fallback = regex_fallback({"AAA": ["2025-12-31"]})
     assert fallback("What did Alpha earn?") == Search("What did Alpha earn?", None, None)
     assert fallback("What did aaa earn in 2025?").year == 2025
+
+
+def test_select_context_keeps_one_passage_per_filing_and_orders_by_score():
+    from src.agent.context import select_context
+
+    def c(cid, ticker, date):
+        return {"chunk_id": cid, "ticker": ticker, "report_date": date}
+
+    evidence = [
+        c("a1", "A", "2025"),
+        c("a2", "A", "2025"),
+        c("a3", "A", "2025"),
+        c("b1", "A", "2024"),
+    ]
+    scores = {"a1": 0.9, "a2": 0.8, "a3": 0.7, "b1": 0.1}
+    picked = select_context("q", evidence, lambda q, ch: [scores[x["chunk_id"]] for x in ch], 2)
+    assert [x["chunk_id"] for x in picked] == ["a1", "b1"]  # the 2024 filing keeps its best
+    assert select_context("q", evidence, None, 3) == evidence[:3]
